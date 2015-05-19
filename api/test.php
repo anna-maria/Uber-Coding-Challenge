@@ -2,10 +2,6 @@
 	require 'vendor/autoload.php';
 
 	$app = new \Slim\Slim();
-
-	// Google App Engine doesn't set $_SERVER['PATH_INFO']
-	$app->environment['PATH_INFO'] = $_SERVER['REQUEST_URI'];
-
 	$app->get('/hello/:name', function ($name) {
 	    echo "Hello, $name";
 	});
