@@ -21,7 +21,7 @@
           source: function(request, response){
             $.ajax({
                 type: "GET",
-                url: "/api/movies?name="+request.term,
+                url: "/movies?name="+request.term,
                 dataType: "json"
             }).done(function(data){
                 response($.map(data, function(v,i){
@@ -39,7 +39,7 @@
             $('#title').val(ui.item.label);
             $.ajax({
                 type: "GET",
-                url: "/api/movies/"+ui.item.value,
+                url: "/movies/"+ui.item.value,
                 dataType: "json"
             }).done(function(data){
                 initialize(data);
