@@ -1,76 +1,75 @@
 <?php
     require '../vendor/autoload.php';
 
+    $dbopts = parse_url(getenv('DATABASE_URL'));
+    if (empty($dbopts['path'])) {
+        $dbopts = parse_url(require '../env.php');
+    }
+
     $app = new \Slim\Slim();
 
-    $app->get('/map', function () {
-        echo '<html>
-              <head>
-                <style type="text/css">
-                  html, body, #map-canvas { height: 100%; margin: 0; padding: 0;}
-                </style>
-                <script type="text/javascript"
-                  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCzZsdcUsJuf7DhjDhu4vhyOIiiQeAQ-2A">
-                </script>
-                <script type="text/javascript">
-                  function initialize() {
-                    var mapOptions = {
-                      center: { lat: 37.783, lng: -122.417},
-                      zoom: 12
-                    };
-                    var map = new google.maps.Map(document.getElementById(\'map-canvas\'),
-                        mapOptions);
-                    /*var myLatlng = new google.maps.LatLng(37.819,-122.479);
-                    var marker = new google.maps.Marker({
-                          position: myLatlng,
-                          map: map,
-                          title: \'Golden Gate Bridge!\'
-                      });*/
-                  }
-                  google.maps.event.addDomListener(window, \'load\', initialize);
-                </script>
-              </head>
-              <body>
-                <div style="margin-top:10px;margin-bottom:10px;text-align:center;">To Start, Search By Movie Title: <input type="text" name="title" value=""></div>
-                <div id="map-canvas"></div>
-              </body>
-            </html>';
+    try {
+        $dbh = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
+    } catch(PDOException $e) {
+        echo $e->getMessage();
+    }
+
+    // Retrieve all movies - also used for autocomplete with name parameter
+    $app->get('/movies', function () use ($app,$dbh) {
+        $autocomplete = $app->request->params('name');
+        if ($autocomplete) {
+            $sql = "SELECT id, name FROM movie
+                    WHERE name ILIKE '$autocomplete%';";
+        } else {
+            $sql = "SELECT m.name, l.lat, l.lng FROM movie m
+                    INNER JOIN movie_location ml ON m.id = ml.movie_id
+                    INNER JOIN location l ON ml.location_id = l.id";
+        }
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute();
+
+        $movieLocation = $stmt->fetchAll(PDO::FETCH_OBJ);
+
+        if ($movieLocation) {
+            $app->response->setStatus(200);
+            $app->response->headers->set('Content-Type', 'application/json');
+            echo json_encode($movieLocation);
+        } else {
+            $app->response->setStatus(404);
+            echo json_encode(['status' => false, 'message' => 'No movies are found.']);
+        }
     });
 
-    $app->get('/movie', function () {
-        echo getMovies();
+    // Retrieve a specific movie
+    $app->get('/movies/:id', function ($id) use ($app,$dbh) {
+        $sql = "SELECT m.name, l.lat, l.lng FROM movie m
+                INNER JOIN movie_location ml ON m.id = ml.movie_id
+                INNER JOIN location l ON ml.location_id = l.id
+                WHERE m.id = :id";
+        $stmt = $dbh->prepare($sql);
+        $stmt->bindParam(':id', $id);
+        $stmt->execute();
+
+        $movieLocation = $stmt->fetchAll(PDO::FETCH_OBJ);
+
+        if ($movieLocation) {
+            $app->response->setStatus(200);
+            $app->response->headers->set('Content-Type', 'application/json');
+            echo json_encode($movieLocation);
+        } else {
+            $app->response->setStatus(404);
+            echo json_encode(['status' => false, 'message' => 'Movie ID: ' . $id . ' is not found.']);
+        }
     });
+
+    // Future POST, PUT, and DELETE functionality
+    $app->post('/movies', function() {
+    });
+
+    $app->put('/movies/:id', function ($id) {
+    });
+
+    $app->delete('/movies/:id', function ($id) {
+    });
+
     $app->run();
-
-    function getMovies() {
-        $error = '';
-        $reply = curlIt('https://data.sfgov.org/resource/yitu-d5am.json', $error); 
-        //$reply = curlIt('https://data.sfgov.org/resource/wwmu-gmzc.json', $error);
-        if ($reply == false) {
-            // curl error
-        } else {
-            return $reply;
-        }
-    }
-    
-    function curlIt($url, &$error) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_HEADER, 0);
-        curl_setopt($ch, CURLOPT_VERBOSE, 1);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-        curl_setopt($ch, CURLOPT_FAILONERROR, 0);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-
-        curl_setopt($ch, CURLOPT_URL, $url);
-        $returned = curl_exec($ch);
-        if($returned === false) {
-            // most likely a timeout
-            $error = curl_error($ch);
-            return false;
-        } else {
-            return $returned;
-        }
-        curl_close ($ch);
-    }
