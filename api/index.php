@@ -18,6 +18,10 @@
         echo file_get_contents('../views/index.html');
     });
 
+    $app->get('/hello', function () {
+        echo 'hello';
+    });
+
     // Retrieve all movies - also used for autocomplete with name parameter
     $app->get('/movies', function () use ($app,$dbh) {
         $autocomplete = $app->request->params('name');
