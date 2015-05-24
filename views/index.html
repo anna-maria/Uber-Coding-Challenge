@@ -21,7 +21,7 @@
           source: function(request, response){
             $.ajax({
                 type: "GET",
-                url: "/movies?name="+request.term,
+                url: "/movies?fields=name&name="+request.term,
                 dataType: "json"
             }).done(function(data){
                 response($.map(data, function(v,i){
@@ -42,11 +42,12 @@
                 url: "/movies/"+ui.item.value,
                 dataType: "json"
             }).done(function(data){
-                initialize(data);
+                if (data.status == false) {
+                  alert('Uh oh nothing found for this movie!');
+                } else {
+                  initialize(data);
+                }
             });
-          },
-          messages: {
-              noResults: 'Uh oh, we didn\'t find anything!'
           }
       });
 
@@ -69,7 +70,6 @@
         }
       }
       google.maps.event.addDomListener(window, 'load', initialize(null));
-
     </script>
   </body>
 </html>

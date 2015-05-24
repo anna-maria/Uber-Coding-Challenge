@@ -1,72 +1,81 @@
 <?php
-// database vars
+// Get database credentials
 $dbopts = parse_url(getenv('DATABASE_URL'));
 if (empty($dbopts['path'])) {
     $dbopts = parse_url(require '../env.php');
 }
 
-// connect to database
+// Connect to database
 try {
     $dbh = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
 } catch(PDOException $e) {
     echo $e->getMessage();
 }
 
-$movies = getData($dbh);
+$uniqueMovieNames = $uniqueLocations = [];
+$movies = getData($dbh, 0, $uniqueMovieNames, $uniqueLocations);
 
-// get movie data from SF Data
-function getData($dbh, $offset=1000) {
-	$uniqueMovieNames = $uniqueLocations = [];
+// Get movie data from SF Data API - 1000 records at a time
+function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 	$lastMovieId = $lastLocationId = 0;
 
 	$reply = curlIt('https://data.sfgov.org/resource/yitu-d5am.json?$select=title,locations&$offset='.$offset, $error); 
 	$decodedReply = json_decode($reply, true);
 	if (empty($decodedReply)) {
-	    // curl error or no more results
+	    // Curl error or no more results
 	    return $uniqueMovieNames;
 	} else {
 		foreach ($decodedReply as $r) {
 			if (!isset($uniqueMovieNames[$r['title']])) {
-				$uniqueMovieNames[$r['title']] = 1;
-				
-				// insert unique movie names into movie table
+				// Insert unique movie names into movie table
 				$stmt = $dbh->prepare("INSERT INTO movie (name) VALUES (:name)");
 				$stmt->bindParam(':name', $r['title']);
 				$stmt->execute();
 				$lastMovieId = $dbh->lastInsertId('movie_id_seq');
+
+				// Keep track of associative array with unique movie title as key and movie id as value
+				$uniqueMovieNames[$r['title']] = $lastMovieId;
 			}
 
-			if (!isset($uniqueLocations[$r['locations']])) {
-				$uniqueMovieNames[$r['locations']] = 1;
-				
-				$latLng = curlIt('https://maps.googleapis.com/maps/api/geocode/json?address='.urlencode($r['locations']), $error); 
+			if (!isset($uniqueLocations[$r['locations']]) && $r['locations'] != '') {
+				// Get latitude and longitude for a location using Google Maps Geocode API (include San Francisco, CA in the query for more accurate results) 				
+				$latLng = curlIt('https://maps.googleapis.com/maps/api/geocode/json?address='.urlencode($r['locations']).',+San+Francisco,+CA', $error); 
 				$decodedLatLng = json_decode($latLng, true);
+
 				if (!empty($decodedLatLng['results'])) {
 					$lat = $decodedLatLng['results'][0]['geometry']['location']['lat'];
 					$lng = $decodedLatLng['results'][0]['geometry']['location']['lng'];
 
-					// insert unique movie names into movie table
+					// Insert unique movie names into movie table
 					$stmt = $dbh->prepare("INSERT INTO location (place, lat, lng) VALUES (:location, :lat, :lng)");
 					$stmt->bindParam(':location', $r['locations']);
 					$stmt->bindParam(':lat', $lat);
 					$stmt->bindParam(':lng', $lng);
 					$stmt->execute();
 					$lastLocationId = $dbh->lastInsertId('location_id_seq');
+
+					// Keep track of associative array with unique locations as key and location id as value
+					$uniqueLocations[$r['locations']] = $lastLocationId;
+				} else {
+					// Location does not have lat/lng
+					$uniqueLocations[$r['locations']] = null;
 				}
 			}
 
-			// insert into movie_location table
+			// Insert into movie_location table
 			$stmt = $dbh->prepare("INSERT INTO movie_location (movie_id, location_id) VALUES (:movie, :location)");
-			$stmt->bindParam(':movie', $lastMovieId);
-			$stmt->bindParam(':location', $lastLocationId);
+			$stmt->bindParam(':movie', $uniqueMovieNames[$r['title']]);
+			$stmt->bindParam(':location', $uniqueLocations[$r['locations']]);
 			$stmt->execute();
 		}  
 
+		// Increase offset for next batch and recursively call getData()
 		$offset += 1000; 
-		getData($dbh, $offset);
+		getData($dbh, $offset, $uniqueMovieNames, $uniqueLocations);
 	}
 }
 
+// Function to send HTTP GET request
 function curlIt($url, &$error) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_HEADER, 0);
