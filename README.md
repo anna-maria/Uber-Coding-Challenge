@@ -18,6 +18,7 @@ movie_location: id, movie_id, location_id
 A populateDb script is used to call the DataSF api and loop through all results (calling Google Maps Geocode API to retrieve latitude and longitude for all unique locations) to properly fill these three tables. This script can be run in the command line using: `php populateDb.php`.Testing of the API is in the form of basic integration testing. It tests the API with a POST, GET, GET (by specific ID), PUT, and DELETE sequence. 
 
 ###Future improvements
+* Extending the movies resource would be an excellent improvement - Including the location name and some facts/actors would be favorable to user experience. This could be implemented by having a lightbox or side menu that is populated upon clicking a marker.
 * Future improvements (limited by timing) could include creating a second resource: location. This would allow the movies and locations resources to be treated seperately and allow access to relations between the two in this (sample) endpoint manner: GET /movies/:id/location/:id
 * Due to the static nature of the movie/location data, the API could also be improved by adding caching to each endpoint. This would be most useful for high GET request traffic. For the scope of this project, caching was left out. 
 * Testing could be improved by adding unit tests throughout the application for each function. 
