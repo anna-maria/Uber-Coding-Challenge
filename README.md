@@ -1,6 +1,6 @@
 # Uber Coding Challenge
 
-* This application is hosted on:
+* This application is hosted on: [Heroku](https://nameless-ridge-1156.herokuapp.com/)
 * API documentation can be viewed here: [Uber Coding Challenge Wiki](https://github.com/anna-maria/Uber-Coding-Challenge/wiki)
 * This solution focuses on **back-end**. PHP (experience: 2 years +), Slim Framework (experience: none), and PostgreSQL (experience: 2 years + of MySQL experience - no experience with PostgreSQL) are used and a very basic front-end is included. 
 
