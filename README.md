@@ -1,4 +1,4 @@
-# Uber-Coding-Challenge
+# Uber Coding Challenge
 
 * This application is hosted on:
 * API documentation can be viewed here: [Uber Coding Challenge Wiki](https://github.com/anna-maria/Uber-Coding-Challenge/wiki)
@@ -18,8 +18,7 @@ movie_location: id, movie_id, location_id
 A populateDB script is used to call the DataSF api and loop through all results (calling Google Maps Geocode API to retrieve latitude and longitude for all unique locations) to properly fill these three tables. Testing of the API is in the form of basic integration testing. It tests the API with a POST, GET, GET (by specific ID), PUT, and DELETE sequence. 
 
 ###Future improvements
-Future improvements (limited by timing) could included creating a second resource: location. This would allow the movies and locations resources to be treated seperately and allow access to relations between the two in this (sample) endpoint manner:
-```
-GET /movies/:id/location/:id 
-```
-Due to the static nature of the movie/location data, the API could also be improved by adding caching to each endpoint. This would be most useful for high GET request traffic. For the scope of this project, caching was left out. Testing could be improved by adding unit tests throughout the application for each function. As for database improvements: we can note that some locations do not return a valid lat/lng and this case should not be inserted into the movie_location table.
+* Future improvements (limited by timing) could included creating a second resource: location. This would allow the movies and locations resources to be treated seperately and allow access to relations between the two in this (sample) endpoint manner: GET /movies/:id/location/:id
+* Due to the static nature of the movie/location data, the API could also be improved by adding caching to each endpoint. This would be most useful for high GET request traffic. For the scope of this project, caching was left out. 
+* Testing could be improved by adding unit tests throughout the application for each function. 
+* As for database improvements: we can note that some locations do not return a valid lat/lng and this case should not be inserted into the movie_location table.
