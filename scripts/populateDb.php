@@ -7,16 +7,16 @@ if (empty($dbopts['path'])) {
 
 // Connect to database
 try {
-    $dbh = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
+    $db = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
 } catch(PDOException $e) {
     echo $e->getMessage();
 }
 
 $uniqueMovieNames = $uniqueLocations = [];
-$movies = getData($dbh, 0, $uniqueMovieNames, $uniqueLocations);
+$movies = getData($db, 0, $uniqueMovieNames, $uniqueLocations);
 
 // Get movie data from SF Data API - 1000 records at a time
-function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
+function getData($db, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 	$lastMovieId = $lastLocationId = 0;
 
 	$reply = curlIt('https://data.sfgov.org/resource/yitu-d5am.json?$select=title,locations&$offset='.$offset, $error); 
@@ -28,10 +28,10 @@ function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 		foreach ($decodedReply as $r) {
 			if (!isset($uniqueMovieNames[$r['title']])) {
 				// Insert unique movie names into movie table
-				$stmt = $dbh->prepare("INSERT INTO movie (name) VALUES (:name)");
+				$stmt = $db->prepare("INSERT INTO movie (name) VALUES (:name)");
 				$stmt->bindParam(':name', $r['title']);
 				$stmt->execute();
-				$lastMovieId = $dbh->lastInsertId('movie_id_seq');
+				$lastMovieId = $db->lastInsertId('movie_id_seq');
 
 				// Keep track of associative array with unique movie title as key and movie id as value
 				$uniqueMovieNames[$r['title']] = $lastMovieId;
@@ -47,12 +47,12 @@ function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 					$lng = $decodedLatLng['results'][0]['geometry']['location']['lng'];
 
 					// Insert unique movie names into movie table
-					$stmt = $dbh->prepare("INSERT INTO location (place, lat, lng) VALUES (:location, :lat, :lng)");
+					$stmt = $db->prepare("INSERT INTO location (place, lat, lng) VALUES (:location, :lat, :lng)");
 					$stmt->bindParam(':location', $r['locations']);
 					$stmt->bindParam(':lat', $lat);
 					$stmt->bindParam(':lng', $lng);
 					$stmt->execute();
-					$lastLocationId = $dbh->lastInsertId('location_id_seq');
+					$lastLocationId = $db->lastInsertId('location_id_seq');
 
 					// Keep track of associative array with unique locations as key and location id as value
 					$uniqueLocations[$r['locations']] = $lastLocationId;
@@ -63,7 +63,7 @@ function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 			}
 
 			// Insert into movie_location table
-			$stmt = $dbh->prepare("INSERT INTO movie_location (movie_id, location_id) VALUES (:movie, :location)");
+			$stmt = $db->prepare("INSERT INTO movie_location (movie_id, location_id) VALUES (:movie, :location)");
 			$stmt->bindParam(':movie', $uniqueMovieNames[$r['title']]);
 			$stmt->bindParam(':location', $uniqueLocations[$r['locations']]);
 			$stmt->execute();
@@ -71,7 +71,7 @@ function getData($dbh, $offset=1000, $uniqueMovieNames, $uniqueLocations) {
 
 		// Increase offset for next batch and recursively call getData()
 		$offset += 1000; 
-		getData($dbh, $offset, $uniqueMovieNames, $uniqueLocations);
+		getData($db, $offset, $uniqueMovieNames, $uniqueLocations);
 	}
 }
 

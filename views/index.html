@@ -59,7 +59,7 @@
         var map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
 
         if (marker != null) {
-          $.each(marker, function(k, v) {
+          $.each(marker[0].locations, function(k, v) {
             var myLatlng = new google.maps.LatLng(v.lat, v.lng);
             var marker = new google.maps.Marker({
                   position: myLatlng,

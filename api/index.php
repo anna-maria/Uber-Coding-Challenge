@@ -6,10 +6,11 @@ $app = new \Slim\Slim();
 // Get database credentials and connection
 $dbopts = parse_url(getenv('DATABASE_URL'));
 if (empty($dbopts['path'])) {
+    // Used for local
     $dbopts = parse_url(require '../env.php');
 }
 try {
-    $dbh = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
+    $db = new PDO('pgsql:dbname='.ltrim($dbopts["path"],'/').';host='.$dbopts["host"], $dbopts["user"], $dbopts["pass"]);
 } catch(PDOException $e) {
     error_log('Database connection error.');
 }
@@ -20,18 +21,47 @@ $app->get('/', function () {
 });
 
 // Retrieve all movies - also used for autocomplete with name parameter
-$app->get('/movies', function () use ($app,$dbh) {
+$app->get('/movies', function () use ($app,$db) {
+    // Get extra query (return fields, sort, autocomplete name) if applicable
     $fields = $app->request->params('fields');
     $name = $app->request->params('name');
     $sort = $app->request->params('sort');
     $movieLocation = null;
 
-    $movieLocation = findMoviesBy($app, $dbh, $fields, $sort, $name);
+    $movieLocation = findMoviesBy($app, $db, $fields, $sort, $name);
 
+    // Build proper movie response 
     if ($movieLocation) {
+        $finalMovies = $allMovies = $movies = [];
+        foreach ($movieLocation as $movie) {
+            if (!isset($allMovies[$movie->name])) {
+                if (!empty($movies)) {
+                    // Add to final response array after all locations are added to a specific movie
+                    $finalMovies[] = $movies;
+                    $movies = [];
+                }
+                // New movie name
+                $movies['id'] = $movie->id;
+                $movies['name'] = $movie->name;
+                if (isset($movie->lat) && isset($movie->lng)) {
+                    $movies['location'][] = ['lat' => $movie->lat, 'lng' => $movie->lng];
+                }
+                $allMovies[$movie->name] = 1;
+            } else {
+                if (isset($movie->lat) && isset($movie->lng)) {
+                    // Add to lat/lng of an existing movie
+                    $movies['locations'][] = ['lat' => $movie->lat, 'lng' => $movie->lng];
+                }
+
+            }
+        }
+
+        // Set the last $movie to $finalMovies
+        $finalMovies[] = $movies;
+
         $app->response->setStatus(200);
         $app->response->headers->set('Content-Type', 'application/json');
-        echo json_encode($movieLocation);
+        echo json_encode($finalMovies);
     } else {
         $app->response->setStatus(404);
         echo json_encode(['status' => false, 'message' => 'No movies are found.']);
@@ -39,7 +69,7 @@ $app->get('/movies', function () use ($app,$dbh) {
 });
 
 // Query the database for movies using fields, sort, or name filtering if applicable
-function findMoviesBy($app, $dbh, $fields, $sort, $name) {
+function findMoviesBy($app, $db, $fields, $sort, $name) {
     $where = $orderBy = '';
     $params = [];
 
@@ -59,6 +89,7 @@ function findMoviesBy($app, $dbh, $fields, $sort, $name) {
         }
     }
 
+    // Build full sql query with correct params
     if ($fields) {
         $select = "SELECT m.id, m.name";
     } else {
@@ -80,14 +111,15 @@ function findMoviesBy($app, $dbh, $fields, $sort, $name) {
 
     $sql = $select . $from . $where . $orderBy;
 
-    $stmt = $dbh->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->execute($params);
 
     return $stmt->fetchAll(PDO::FETCH_OBJ);  
 }
 
 // Retrieve a specific movie
-$app->get('/movies/:id', function ($id) use ($app,$dbh) {
+$app->get('/movies/:id', function ($id) use ($app,$db) {
+    // Valication for id
     if (!isset($id) || !is_numeric($id) || $id <= 0) {
         $app->response->setStatus(400);
         echo json_encode(['status' => false, 'message' => 'Movie ID is not valid.']);
@@ -97,16 +129,30 @@ $app->get('/movies/:id', function ($id) use ($app,$dbh) {
             LEFT JOIN movie_location ml ON m.id = ml.movie_id
             LEFT JOIN location l ON ml.location_id = l.id
             WHERE m.id = :id";
-    $stmt = $dbh->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->bindParam(':id', $id);
     $stmt->execute();
 
     $movieLocation = $stmt->fetchAll(PDO::FETCH_OBJ);
 
     if ($movieLocation) {
+        // Build proper movie response
+        $finalMovie = $movies = [];
+        foreach ($movieLocation as $movie) {
+            $movies['id'] = $movie->id;
+            $movies['name'] = $movie->name;
+            if (isset($movie->lat) && isset($movie->lng)) {
+                $movies['locations'][] = ['lat' => $movie->lat, 'lng' => $movie->lng];
+            }
+            $allMovies[$movie->name] = 1;
+        }
+
+        // Set the last $movie to $finalMovies
+        $finalMovie[] = $movies;
+
         $app->response->setStatus(200);
         $app->response->headers->set('Content-Type', 'application/json');
-        echo json_encode($movieLocation);
+        echo json_encode($finalMovie);
     } else {
         $app->response->setStatus(404);
         echo json_encode(['status' => false, 'message' => 'Movie ID: ' . $id . ' is not found.']);
@@ -114,16 +160,17 @@ $app->get('/movies/:id', function ($id) use ($app,$dbh) {
 });
 
 // Create a movie
-$app->post('/movies', function() use ($app, $dbh){
+$app->post('/movies', function() use ($app, $db){
     $body = $app->request->getBody();
     $postMovie = json_decode($body, true);
 
+    // Insert new movie in database
     $sql = "INSERT INTO movie (name)
             VALUES (:name);";
-    $stmt = $dbh->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->bindParam(':name', $postMovie['name']);
     $stmt->execute();
-    $lastMovieId = $dbh->lastInsertId('movie_id_seq');
+    $lastMovieId = $db->lastInsertId('movie_id_seq');
 
     if ($lastMovieId) {
         $app->response->setStatus(201);
@@ -138,25 +185,33 @@ $app->post('/movies', function() use ($app, $dbh){
 });
 
 // Update a movie 
-$app->put('/movies/:id', function ($id) use($app, $dbh){
+$app->put('/movies/:id', function ($id) use($app, $db){
+    // Valication for id
+    if (!isset($id) || !is_numeric($id) || $id <= 0) {
+        $app->response->setStatus(400);
+        echo json_encode(['status' => false, 'message' => 'Movie ID is not valid.']);
+    }
+
     $body = $app->request->getBody();
     $putMovie = json_decode($body, true);
 
+    // Query database to see if the movie actually exists
     $sql = "SELECT *
             FROM movie
             WHERE id = :id;";
-    $stmt = $dbh->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->bindParam(':id', $id);
     $stmt->execute();
     $movie = $stmt->fetch();
 
     if ($movie) {
-        $sql = "UPDATE movie (
+        // Update movie name in database
+        $sql = "UPDATE movie
                 SET name = :name
                 WHERE id = :id;";
-        $stmt = $dbh->prepare($sql);
+        $stmt = $db->prepare($sql);
         $stmt->bindParam(':name', $putMovie['name']);
-        $stmt->bindParam(':id', $row['id']);
+        $stmt->bindParam(':id', $movie['id']);
         $stmt->execute();
 
         $app->response->setStatus(200);
@@ -167,16 +222,18 @@ $app->put('/movies/:id', function ($id) use($app, $dbh){
 });
 
 // Delete a movie
-$app->delete('/movies/:id', function ($id) use ($app, $dbh){
-    if (!is_numeric($id)){
+$app->delete('/movies/:id', function ($id) use ($app, $db){
+    // Validation for id
+    if (!isset($id) || !is_numeric($id) || $id <= 0) {
         $app->response->setStatus(400);
         echo json_encode(['status' => false, 'message' => 'Movie ID is not valid.']);
     }
 
+    // Update deleted_at with current timestamp to set movie as deleted
     $sql = "UPDATE movie m
             SET deleted_at = now()
             WHERE m.id = :id";
-    $stmt = $dbh->prepare($sql);
+    $stmt = $db->prepare($sql);
     $stmt->bindParam(':id', $id);
     $stmt->execute();
 
